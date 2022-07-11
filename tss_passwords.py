@@ -129,6 +129,23 @@ EXAMPLES = r'''
 
 RETURN = r'''
 # FINDME add return values
+secret_id: 
+    description: The ID of the secret in Secret Server
+    type: str
+    returned: When a password search is performed and a match is found
+#FINDME - find documentation of what should be with `returned:` - free text or should it be specific values? and also a sample ID for `sample`
+
+secret_name:
+    description: The secret password
+    type: str
+    returned: When a password search is performed and a match is found
+    sample: batteryhorsestaple
+
+secret_value:
+    description: The secret password
+    type: str
+    returned: When a password search is performed and a match is found
+    sample: batteryhorsestaple
 '''
 
 from ansible.module_utils.basic import AnsibleModule
@@ -196,6 +213,7 @@ def api_request(api_params)
             requests.post(api_params['api_path'], api_params['api_request_args'])
         else:
             method_exception_raised = True
+        # This is very blanket and doesn't actually validate output. Mainly used for the test_api action 
         if method_exception_raised:
             response = "The API method failed to be sent to the api_request function or was an invalid value (must be post or get, received \"" + api_method + " \" instead)."
         else:
@@ -208,23 +226,6 @@ def api_request(api_params)
         response = "Exited due Keyboard interrupt"
     return response
 
-def search_password(api_params, secret_params):
-    #FINDME update api_dest and finish function
-    api_params['api_path'] = api_params['api_path'] + "secrets?filter.searchText=" + secret_params['secret_name'] + ""
-    search_results = api_request(api_params)
-    
-def update_password(api_params, secret_params):
-#FINDME
-def generate_password(api_params, secret_params):
-#FINDME
-
-def generate_api_token(api_params, user_params):
-    # API endpoint for password generation
-    api_params['api_path'] = api_params['api_path'] + "secret-templates/generate-password/7"
-    generated_token = api_request(api_params)
-    result = {'stdout': generated_token.json, 'changed': True} 
-    return result
-
 def validate_api(api_params):
     # Use the healthcheck to validate the token
     api_params['api_path'] = api_params['api_path'] + "/healthcheck"
@@ -234,6 +235,46 @@ def validate_api(api_params):
     else: 
         result = {'changed': False, 'failed': True, 'msg': response}
     return result
+
+def search_password(api_params, secret_params):
+    api_params['api_path'] = api_params['api_path'] + "secrets/lookup?filter.includeRestricted=true&filter.searchText=" + secret_params['secret_name'] + ""
+    search_results = api_request(api_params)
+    #FINDME need to verify name is returned from the secrets/lookup api endpoint in addition to the secrets endpoint
+    # Return the secret value as stdout - this should be the expected return value
+    if search_results['name'].lower() == secret_params['secret_name'].lower(): 
+        stdout = search_results['value'] 
+        result = {'changed': False, 'failed': False, 'stdout': stdout, 'secret_id': search_results['id'], 'secret_name': search_results['name'], 'secret_value': search_results['value']} 
+    else:
+        Display().warning('Secret not found with name ' + secret_params['secret_name'] + '!')
+        result =  {'changed': False, 'failed': False, 'secret_id': "", 'secret_name': search_results['name'], 'secret_value': ""} 
+
+def update_password(api_params, secret_params):
+#FINDME
+
+def generate_password(api_params, secret_params):
+    api_params['api_path'] = api_params['api_path'] + "secret-templates/generate-password/7"
+    generated_password = api_request(api_params)
+    #FINDME - is a specific field in the JSON which should be extracted?
+    result = {'changed': True, 'failed': False, 'stdout': generated_password.json()}
+
+def generate_api_token(api_params, user_params):
+    # API endpoint for password generation
+    api_params['api_path'] = api_params['api_path'] + "/oauth2/token"
+    generated_token = api_request(api_params)
+
+    # Update authentication method
+    api_auth_header = {'Authorization': "Bearer {}".format(generated_token)}
+    auth_method = "headers=" + api_auth_header
+    api_params['api_request_args'] = auth_method + "verify=" + module.params['verify_https'] 
+
+    # Test token
+    result = validate_api(api_params)
+    # If the test was successful, return the generated token inside stdout
+    if not result['failed']:
+        result['stdout'] = generated_token
+    # Return the results
+    return result
+
 
 def run_module():
     # Define available arguments that can be passed to this module
@@ -250,9 +291,6 @@ def run_module():
         'password': {'type': 'str', 'required': False},
         'verify_https': {'type': 'bool', 'required': False, 'default': True}
     }
-       # Removed as merged into new option "action". Functions to be triggered on conditional of action
-       # 'generate_password': {'type': 'bool', 'required': false, 'default': False},
-       # 'generate_token': {'type': 'bool', 'required': False, 'default': False},
 
     module = AnsibleModule(
         argument_spec = module_args,
@@ -273,8 +311,13 @@ def run_module():
     }
 
     ## Connection properties
-    # Declare header as it must be a dict
-    api_auth_header = {'Authorization': "Bearer {}".format(module.params['token'])}
+    # Declare header as it must be a dict. Added support for API Token generation into the main API request
+    if action == "generate_token":
+        auth_params['grant_type'] = "password"
+        auth_method = "body=" + auth_params
+    else:
+        api_auth_header = {'Authorization': "Bearer {}".format(module.params['token'])}
+        auth_method = "headers=" + api_auth_header
 
     # Determine if API uses get or post off of type of action
     if action in ("search", "test_api"):
@@ -282,11 +325,12 @@ def run_module():
     elif action in ("update", "generate_password", "generate_token"):
         api_method = "post"
     
-    # Create a dict of all API parameters
+    # Create a dict of all API parameters. Added seperate api_verify for generate_token to be able to validate the token
     api_params = {
         'api_path': module.params['base_url'] + module.params['api_path_uri'],
         'api_method': api_method,
-        'api_request_args': "headers=" + api_auth_header + "verify=" + module.params['verify_https']
+        'api_request_args': auth_method + "verify=" + module.params['verify_https']
+        'api_verify': "verify=" + module.params['verify_https']
     }
 
     ## Pre-flight checks
