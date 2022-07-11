@@ -136,13 +136,13 @@ secret_id:
 #FINDME - find documentation of what should be with `returned:` - free text or should it be specific values? and also a sample ID for `sample`
 
 secret_name:
-    description: The secret password
+    description: The secret name in secret server
     type: str
     returned: When a password search is performed and a match is found
-    sample: batteryhorsestaple
+    sample: "Prod Server root"
 
 secret_value:
-    description: The secret password
+    description: The secret password. The sample password in this example should NEVER be used.
     type: str
     returned: When a password search is performed and a match is found
     sample: batteryhorsestaple
