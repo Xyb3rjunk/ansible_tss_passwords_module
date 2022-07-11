@@ -185,11 +185,12 @@ def validate_module_arge(module):
     
     # Validate necessary parameters present for token generation
     if module.param['action'] == "generate_token":
-        if token:
+        # Note that this runs before generate_token and tests on a different variable to the token generated
+        if module.param['token']:
             warning.append("generate_token: Should not specify token when requesting a token! Ignoring provided token.")
-        if not username:
+        if not module.param['username']:
             fatal_errors.append("Cannot generate token without including username in the request!!!")
-        if not password:
+        if not module.param['password']:
             fatal_errors.append("Cannot generate token without including username in the request!!!")
 
     # Validate necessary parameters for everything else
@@ -246,18 +247,19 @@ def search_password(api_params, secret_params):
         result = {'changed': False, 'failed': False, 'stdout': stdout, 'secret_id': search_results['id'], 'secret_name': search_results['name'], 'secret_value': search_results['value']} 
     else:
         Display().warning('Secret not found with name ' + secret_params['secret_name'] + '!')
-        result =  {'changed': False, 'failed': False, 'secret_id': "", 'secret_name': search_results['name'], 'secret_value': ""} 
+        result =  {'changed': False, 'failed': False, 'secret_id': "", 'secret_name': "", 'secret_value': "", 'msg': "Secret not found with provided criteria"} 
 
 def update_password(api_params, secret_params):
 #FINDME
 
+#FINDME secret_params sent to this function - add additional section for editing password in future
 def generate_password(api_params, secret_params):
     api_params['api_path'] = api_params['api_path'] + "secret-templates/generate-password/7"
     generated_password = api_request(api_params)
     #FINDME - is a specific field in the JSON which should be extracted?
     result = {'changed': True, 'failed': False, 'stdout': generated_password.json()}
 
-def generate_api_token(api_params, user_params):
+def generate_api_token(api_params):
     # API endpoint for password generation
     api_params['api_path'] = api_params['api_path'] + "/oauth2/token"
     generated_token = api_request(api_params)
@@ -272,6 +274,8 @@ def generate_api_token(api_params, user_params):
     # If the test was successful, return the generated token inside stdout
     if not result['failed']:
         result['stdout'] = generated_token
+    if result['failed']:
+        result['msg'] = "Could not successfully generate a valid token. Message/token is " + generated_token
     # Return the results
     return result
 
