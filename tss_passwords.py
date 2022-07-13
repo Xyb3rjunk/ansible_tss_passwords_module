@@ -18,7 +18,7 @@ options:
         default: search
         description:
             - search: Search the Secret Server for a password
-            - update: Update a stored password in Secret Server
+            - update: Update a stored password in Secret Server. If secret_password is not provided, a random password will be generated.
             - generate_password: Generate a password as the return value when set to `true`. Cannot be used to set the password for a specified secret - instead the return value must be used in another stanza [future state]. 
             - generate_token: Generate an API token using the `username` and `password` options when set to `true`. This can then be registered as a variable and sent to subsequent requests.
             - test_api: Test connectivity and API token. To be used as validation prior to changes.
@@ -75,6 +75,12 @@ options:
             - Required when I(generate_token) is set to `true` (defaults to false).
         required: false
         type: str
+    permit_empty_secrets:
+        default: false
+        description:
+            - Used to override the default behaviour of generating a random secret when the secret_password value is empty.
+        required: false
+        type: bool
     verify_https:
         default: true
         description: If set to false, attempt to ignore certificate errors. NOT RECOMMENDED.
@@ -201,8 +207,10 @@ def validate_module_arge(module):
             if not module.param['secret_name']:
                 fatal_error.append("The secret_name parameter is mandatory when not generating a token or password!!!")
             if not module.param['action'] == "search":
-                if not module.param['secret_password']:
-                    warning.append("No value was sent in the password field")
+                if not module.param['secret_password'] and not module.params['permit_empty_secrets']:
+                    warning.append("No value was set in secret_password. A password will be generated for this secret.")
+                elif not module.param['secret_password']:
+                    results['msg'] = "No value was set in secret_password, continuing as permit_empty_secrets was enabled."
     return warning 
     return fatal_errors
 
@@ -249,16 +257,26 @@ def search_password(api_params, secret_params):
         Display().warning('Secret not found with name ' + secret_params['secret_name'] + '!')
         result =  {'changed': False, 'failed': False, 'secret_id': "", 'secret_name': "", 'secret_value': "", 'msg': "Secret not found with provided criteria"} 
 
-def update_password(api_params, secret_params):
-#FINDME
 
-#FINDME secret_params sent to this function - add additional section for editing password in future
-def generate_password(api_params, secret_params):
+def generate_password(api_params):
     api_params['api_path'] = api_params['api_path'] + "secret-templates/generate-password/7"
     generated_password = api_request(api_params)
     #FINDME - is a specific field in the JSON which should be extracted?
     result = {'changed': True, 'failed': False, 'stdout': generated_password.json()}
 
+def update_password(api_params, secret_params):
+#FINDME
+    if not secret_params['secret_password'] and not secret_params['permit_empty_secret']:
+       secret_params['secret_password'] = generate_password(api_params) 
+       # a note should be added to the secret that the password was generated
+      
+    # Search for password to update. If not found, create a new one under the provided path - if path not provided exit.
+
+    # Update password
+    #result['secret_id']
+
+     
+    
 def generate_api_token(api_params):
     # API endpoint for password generation
     api_params['api_path'] = api_params['api_path'] + "/oauth2/token"
@@ -293,6 +311,7 @@ def run_module():
         'token_path_uri': {'type': 'str', 'required': False, 'default': '/SecretServer/oauth2/token'},
         'username': {'type': 'str', 'required': False},
         'password': {'type': 'str', 'required': False},
+        'permit_empty_secrets': {'type': 'bool', 'default': False, 'required': False},
         'verify_https': {'type': 'bool', 'required': False, 'default': True}
     }
 
@@ -312,6 +331,7 @@ def run_module():
         'secret_name': module.params['secret_name'],
         'secret_password': module.params['secret_password'],
         'secret_folder': module.params['secret_folder']
+        'permit_empty_secrets': module.params['permit_empty_secrets']
     }
 
     ## Connection properties
