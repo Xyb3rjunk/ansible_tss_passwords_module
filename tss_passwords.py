@@ -58,6 +58,15 @@ options:
         description: The password of the entry to be updated in Secret Server
         required: false
         type: str
+    secret_notes:
+         description: Notes which should accompany the secret. Will append to existing notes.
+         required: false
+         type: str
+    site_id:
+        default: 1
+        description: The site ID in Secret Server in which the secret is located - used primarily for multi-tenancies instances.
+        required: false
+        type: int
     token_path_uri:
         default: /SecretServer/oauth2/token 
         description: The path to append to the base URL to form a valid OAuth2 Access Grant request.
@@ -256,6 +265,7 @@ def search_password(api_params, secret_params):
     else:
         Display().warning('Secret not found with name ' + secret_params['secret_name'] + '!')
         result =  {'changed': False, 'failed': False, 'secret_id': "", 'secret_name': "", 'secret_value': "", 'msg': "Secret not found with provided criteria"} 
+        raise SecretNotFound
 
 
 def generate_password(api_params):
@@ -264,16 +274,36 @@ def generate_password(api_params):
     #FINDME - is a specific field in the JSON which should be extracted?
     result = {'changed': True, 'failed': False, 'stdout': generated_password.json()}
 
+#FINDME - add ability to append notes to entries inside this function?
 def update_password(api_params, secret_params):
 #FINDME
     if not secret_params['secret_password'] and not secret_params['permit_empty_secret']:
        secret_params['secret_password'] = generate_password(api_params) 
-       # a note should be added to the secret that the password was generated
       
-    # Search for password to update. If not found, create a new one under the provided path - if path not provided exit.
+    # Search for password and update it. If not found, create a new one under the provided path - if path/folder not provided exit.
+    try:
+        secret_details = search_password(secret_params)
+        # Wrap arguments in a dict for the JSON request
 
-    # Update password
-    #result['secret_id']
+        #FINDME. Work in progress here - the search function will need updating to support these variables. Should the json and request
+        # be outside of the try function
+        json_body = {
+            'name': secret_params['secret_name'], 
+            'site_id': secret_params['site_id'],
+            'update_notes': secret_details['notes'] + "\n" + secret_params['secret_notes'],
+            'secret_id': secret_details['secret_id']
+            'folder_id': secret_details['folder_id']
+        }
+        api_params['json'] = "json=" + json_body
+
+    except SecretNotFound:
+        # Attempt to create a new secret entry
+        # If the folder is not provided, fail
+        if not secret_params['secret_folder']:
+            result = {'changed': False, 'failed': True, 'stderr': "Secret not found with provided criteria. Unable to generate a new entry as the folder was not provided."}
+            raise FolderNotFound
+        #
+        
 
      
     
@@ -308,6 +338,8 @@ def run_module():
         'secret_folder': {'type': 'str', 'required': False},
         'secret_name': {'type': 'str', 'required': False},
         'secret_password': {'type': 'str', 'required': False},
+        'secret_notes': {'type': 'str', 'required': False},
+        'site_id': {'type': 'int', 'required': False, 'default': 1},
         'token_path_uri': {'type': 'str', 'required': False, 'default': '/SecretServer/oauth2/token'},
         'username': {'type': 'str', 'required': False},
         'password': {'type': 'str', 'required': False},
@@ -324,13 +356,15 @@ def run_module():
     ## Auth params - for requesting tokens
     auth_params = {
          'username': module.params['username'],
-         'password': module.params['password'],
+         'password': module.params['password']
     }
     ## Secret properties
     secret_params = {
         'secret_name': module.params['secret_name'],
         'secret_password': module.params['secret_password'],
-        'secret_folder': module.params['secret_folder']
+        'secret_folder': module.params['secret_folder'],
+        'secret_notes': module.params['secret_notes'],
+        'site_id': module.params['site_id'],
         'permit_empty_secrets': module.params['permit_empty_secrets']
     }
 
