@@ -188,7 +188,7 @@ except ImportError:
     AccessTokenAuthorizer = None
     HAS_TSS_AUTHORIZER = False
 
-def validate_module_arge(module):
+def validate_module_args(module):
     # Python/Ansible should handle action not matching one of the choices so not validated
 
     # Initialise arrays for error handling
@@ -223,7 +223,7 @@ def validate_module_arge(module):
     return warning 
     return fatal_errors
 
-def api_request(api_params)
+def api_request(api_params):
     try:
         if api_params['api_method'] == "get":
             requests.get(api_params['api_path'], api_params['api_request_args'])
